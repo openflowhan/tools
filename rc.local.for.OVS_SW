@@ -1,0 +1,64 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+
+OVS_MOD="/home/yokogawa/openvswitch/datapath/linux/openvswitch_mod.ko"
+SOCK_FILE="/usr/local/var/run/openvswitch/db.sock"
+CONF_FILE="/usr/local/etc/openvswitch/conf.db"
+OVS_DBSV="/usr/local/sbin/ovsdb-server"
+OVS_VSWITCHD="/usr/local/sbin/ovs-vswitchd"
+OVS_VSCTL="/usr/local/bin/ovs-vsctl"
+IFCONFIG="/sbin/ifconfig"
+BR_NAME="ofs0"
+
+
+##### Load Kernel Module ######
+##### the lies ending w/ # should be commented out
+#rmmod $OVS_MOD  #
+insmod $OVS_MOD
+#killall $OVS_DBSV  #
+#killall $OVS_VSWITCHD  #
+
+##### Start DB server ######
+$OVS_DBSV $CONF_FILE \
+	--remote=punix:$SOCK_FILE \
+	--remote=db:Open_vSwitch,manager_options \
+	--pidfile --detach
+
+# Init DB
+$OVS_VSCTL --no-wait init
+
+
+##### Start VSWITCH  ######
+#$OVS_VSWITCHD unix:$SOCK_FILE --pidfile --detach # userland
+$OVS_VSWITCHD --pidfile --detach                  # non-userland
+$OVS_VSCTL -- --if-exists del-br ofs0
+$OVS_VSCTL add-br $BR_NAME
+# next one line is required only for userland case
+#$OVS_VSCTL set bridge $BR_NAME datapath_type=netdev
+$OVS_VSCTL add-port $BR_NAME eth1
+$OVS_VSCTL add-port $BR_NAME eth2
+$OVS_VSCTL add-port $BR_NAME eth3
+$OVS_VSCTL set bridge $BR_NAME other-config:datapath-id=0000000000000abc
+$OVS_VSCTL set-controller $BR_NAME tcp:192.168.0.7:6633
+
+$IFCONFIG eth1 down
+$IFCONFIG eth2 down
+$IFCONFIG eth3 down
+$IFCONFIG eth1 up
+$IFCONFIG eth2 up
+$IFCONFIG eth3 up
+$IFCONFIG $BR_NAME up
+
+
+
+exit 0
